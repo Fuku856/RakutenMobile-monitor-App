@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Rakuten Monitor</string>
+    <string name="login_title">ログイン</string>
+    <string name="user_id">ユーザーID (メールアドレス)</string>
+    <string name="password">パスワード</string>
+    <string name="login_button">ログイン</string>
+    <string name="update_button">更新 in Widget</string>
+    <string name="data_usage">データ使用量</string>
+    <string name="data_remaining">今月の残量</string>
+    <string name="daily_limit">今日の目安</string>
+    <string name="last_updated">最終更新: %s</string>
+    <string name="error_fetch">データ取得失敗</string>
+</resources>
