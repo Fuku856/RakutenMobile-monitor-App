@@ -129,8 +129,18 @@ class RakutenRepository {
             if (finalUsage != null) {
                 Result.success(finalUsage)
             } else {
-                Log.e(TAG, "Parse error. Title: ${dashboardDoc.title()}")
-                Result.failure(IOException("Usage element not found"))
+                val title = dashboardDoc.title()
+                val isLogin = title.contains("Login", ignoreCase = true) || 
+                              dashboardDoc.select("input[type=password]").isNotEmpty()
+                
+                val errorMessage = if (isLogin) {
+                    "Login failed (Title: $title)"
+                } else {
+                    "Usage not found (Title: $title)"
+                }
+                
+                Log.e(TAG, errorMessage)
+                Result.failure(IOException(errorMessage))
             }
 
         } catch (e: Exception) {
