@@ -10,9 +10,19 @@ class SimpleCookieJar : CookieJar {
 
     @Synchronized
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+        val iterator = this.cookies.iterator()
+        while (iterator.hasNext()) {
+            val currentCookie = iterator.next()
+            for (newCookie in cookies) {
+                if (currentCookie.name == newCookie.name && 
+                    currentCookie.domain == newCookie.domain && 
+                    currentCookie.path == newCookie.path) {
+                    iterator.remove()
+                    break
+                }
+            }
+        }
         this.cookies.addAll(cookies)
-        // Simple deduplication could be added here if needed, but for now we just accumulate
-        // In a production app, you'd want to remove expired/duplicate cookies
     }
 
     @Synchronized
