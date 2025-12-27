@@ -35,68 +35,93 @@ class RakutenRepository(private val context: Context) {
                     Log.d(TAG, "Page loaded: $url")
 
                     // 1. Handle Login Page (Supports both old and new login domains)
+                    // 1. Handle Login Page (Supports both old and new login domains)
                     val isLoginPage = url?.contains("login.account.rakuten.com") == true || 
                                       url?.contains("id.rakuten.co.jp") == true
                                       
-                    if (isLoginPage && !loginScriptExecuted) {
-                        loginScriptExecuted = true
+                    if (isLoginPage) {
                         val pageTitle = view?.title ?: "Unknown"
-                        onProgress("Login: ${pageTitle.take(10)}..")
-                        Log.d(TAG, "Injecting generic login script...")
+                        onProgress("Login Step: ${pageTitle.take(10)}..")
+                        Log.d(TAG, "Injecting login/consent script...")
                         
                         val js = """
                             (function() {
                                 var attempts = 0;
+                                
+                                function findSpecificButton() {
+                                    var btn = document.querySelector('input[type="submit"], button[type="submit"], .loginButton');
+                                    if (!btn) {
+                                        var buttons = Array.from(document.querySelectorAll('button, a.btn, input[type="button"]'));
+                                        btn = buttons.find(b => {
+                                            var t = (b.innerText || b.value || "").toLowerCase();
+                                            return t.includes('login') || t.includes('next') || t.includes('agree') || t.includes('allow') || 
+                                                   t.includes('ログイン') || t.includes('次へ') || t.includes('同意');
+                                        });
+                                    }
+                                    return btn;
+                                }
+
                                 var interval = setInterval(function() {
                                     attempts++;
-                                    if (attempts > 40) { // 20 seconds
+                                    if (attempts > 40) { // 20 seconds timeout
                                         clearInterval(interval);
                                         return;
                                     }
 
-                                    // GENERIC HEURISTIC: Find Password Field First
+                                    // 1. Find Password
                                     var p = document.querySelector('input[type="password"]');
+                                    
+                                    // 2. Find Username
                                     var u = null;
-
                                     if (p) {
-                                        // Look for username field (text/email/tel) that is NOT hidden
                                         var inputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"])'));
                                         var pIndex = inputs.indexOf(p);
-                                        if (pIndex > 0) {
-                                            u = inputs[pIndex - 1]; // Assume the field before password is username
-                                        }
+                                        if (pIndex > 0) u = inputs[pIndex - 1];
                                     }
-                                    
-                                    // Fallback to specific names if generic fails
-                                    if (!u) u = document.querySelector('input[name="u"], input[name="username"], input[name="login_id"]');
+                                    if (!u) u = document.querySelector('input[name="u"], input[name="username"], input[name="login_id"], input[type="email"], input[type="tel"]');
 
-                                    if (u && p) {
-                                        clearInterval(interval);
+                                    // 3. Determine Action
+                                    var shouldSubmit = false;
+                                    var btn = findSpecificButton(); // Look for button every tick
+
+                                    if (u || p) {
+                                        // Case A/B/C: Inputs found (Login Page)
+                                        if (u) {
+                                            u.value = '$userId';
+                                            fireEvents(u);
+                                        }
+                                        if (p) {
+                                            p.value = '$pass';
+                                            fireEvents(p);
+                                        }
+                                        shouldSubmit = true;
+                                    } else if (btn) {
+                                        // Case D: No inputs, but BUTTON found (Consent Page)
+                                        // Only proceed if we actually see the button
+                                        shouldSubmit = true;
+                                    }
+                                    // If neither inputs nor button found, Continue Loop (wait for load)
+
+                                    if (shouldSubmit) {
+                                        clearInterval(interval); // Found our target
                                         
-                                        u.value = '$userId';
-                                        p.value = '$pass';
-                                        
-                                        u.dispatchEvent(new Event('input', { bubbles: true }));
-                                        u.dispatchEvent(new Event('change', { bubbles: true }));
-                                        p.dispatchEvent(new Event('input', { bubbles: true }));
-                                        p.dispatchEvent(new Event('change', { bubbles: true }));
-                                        
-                                        // Generic Submit Finder
                                         setTimeout(function() {
-                                            // 1. Try form submit button
-                                            var btn = p.form ? p.form.querySelector('button, input[type="submit"]') : null;
+                                            // Re-find button to be safe
+                                            var finalBtn = findSpecificButton();
                                             
-                                            // 2. Try generic selectors
-                                            if (!btn) btn = document.querySelector('button[type="submit"], input[type="submit"], .loginButton, button[class*="submit"], button[class*="login"]');
-                                            
-                                            if (btn) {
-                                                btn.click();
-                                            } else if (p.form) {
-                                                p.form.submit();
+                                            if (finalBtn) {
+                                                console.log("Clicking button: " + (finalBtn.innerText || finalBtn.value));
+                                                finalBtn.click();
                                             } else if (document.forms.length > 0) {
                                                 document.forms[0].submit();
                                             }
-                                        }, 1000); 
+                                        }, 500);
+                                    }
+
+                                    function fireEvents(el) {
+                                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                                        el.dispatchEvent(new Event('blur', { bubbles: true }));
                                     }
                                 }, 500);
                             })();
