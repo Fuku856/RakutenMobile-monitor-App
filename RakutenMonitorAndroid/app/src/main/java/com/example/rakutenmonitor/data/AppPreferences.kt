@@ -26,6 +26,27 @@ class AppPreferences(context: Context) {
         private const val KEY_THEME_MODE = "key_theme_mode"
     }
 
+    // Usage State
+    private val _usageFlow = MutableStateFlow(getUsage())
+    val usageFlow: StateFlow<Float> = _usageFlow.asStateFlow()
+
+    private val _lastUpdatedFlow = MutableStateFlow(getLastUpdated())
+    val lastUpdatedFlow: StateFlow<String> = _lastUpdatedFlow.asStateFlow()
+
+    fun saveUsage(usage: Float) {
+        prefs.edit { putFloat(KEY_USAGE, usage) }
+        _usageFlow.value = usage
+    }
+
+    fun getUsage(): Float {
+        return prefs.getFloat(KEY_USAGE, 0.0f)
+    }
+
+    fun saveLastUpdated(timestamp: String) {
+        prefs.edit { putString(KEY_LAST_UPDATED, timestamp) }
+        _lastUpdatedFlow.value = timestamp
+    }
+
     private val _themeModeFlow = MutableStateFlow(getThemeMode())
     val themeModeFlow: StateFlow<ThemeMode> = _themeModeFlow.asStateFlow()
 

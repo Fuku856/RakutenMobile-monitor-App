@@ -5,6 +5,7 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.example.rakutenmonitor.data.AppPreferences
 import com.example.rakutenmonitor.data.RakutenRepository
 import com.example.rakutenmonitor.data.SecureStorage
 import com.example.rakutenmonitor.ui.RakutenWidget

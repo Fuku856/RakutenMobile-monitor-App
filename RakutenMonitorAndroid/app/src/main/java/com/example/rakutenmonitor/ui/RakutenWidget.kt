@@ -52,7 +52,7 @@ class RakutenWidget : GlanceAppWidget() {
         Box(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(ColorProvider(Color(0xE6FFFFFF), Color(0xE61E1E1E))) // ~90% opacity
+                .background(ColorProvider(day = Color(0xE6FFFFFF), night = Color(0xE61E1E1E))) // ~90% opacity
                 .padding(12.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -94,22 +94,29 @@ class RakutenWidget : GlanceAppWidget() {
 
                 Spacer(modifier = GlanceModifier.height(8.dp))
 
-                // Linear Progress Bar (Simulated with Box)
+                // Linear Progress Bar (Simulated with Box and Weights)
                 val limit = 20.0f
                 val progress = (usage / limit).coerceIn(0.0f, 1.0f)
                 
-                Box(
+                Row(
                     modifier = GlanceModifier
                         .fillMaxWidth()
                         .height(6.dp)
-                        .background(ColorProvider(Color(0xFFE0E0E0), Color(0xFF424242))) // Track
+                        .background(ColorProvider(day = Color(0xFFE0E0E0), night = Color(0xFF424242))) // Track
                 ) {
                    Box(
                         modifier = GlanceModifier
-                            .fillMaxWidth(progress)
                             .height(6.dp)
+                            .defaultWeight(if (progress > 0) progress else 0.01f) // Ensure at least small visibility if needed, or 0
                             .background(ColorProvider(R.color.rakuten_crimson)) // Indicator
                    ) {}
+                   if (progress < 1.0f) {
+                       Box(
+                            modifier = GlanceModifier
+                                .height(6.dp)
+                                .defaultWeight(1.0f - progress)
+                       ) {}
+                   }
                 }
 
                 Spacer(modifier = GlanceModifier.height(4.dp))
