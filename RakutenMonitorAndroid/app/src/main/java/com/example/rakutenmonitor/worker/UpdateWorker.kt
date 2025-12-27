@@ -27,7 +27,7 @@ class UpdateWorker(
             return Result.failure()
         }
 
-        val repository = RakutenRepository()
+        val repository = RakutenRepository(applicationContext)
         val result = repository.fetchData(userId, password)
 
         return if (result.isSuccess) {

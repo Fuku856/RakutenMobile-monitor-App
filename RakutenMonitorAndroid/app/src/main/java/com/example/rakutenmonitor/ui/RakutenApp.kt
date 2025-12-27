@@ -364,9 +364,11 @@ fun DashboardScreen(onLogout: () -> Unit) {
                             if (userId != null && password != null) {
                                 isLoading = true
                                 scope.launch {
-                                    val result = withContext(Dispatchers.IO) {
-                                        RakutenRepository().fetchData(userId, password)
-                                    }
+                                    // WebView must run on Main thread initially to be created, and our fetchData handles dispatchers.
+                                    // However, since we are in a coroutine scope on Main thread (from rememberCoroutineScope), 
+                                    // we can just call it. But fetchData is suspend.
+                                    
+                                    val result = RakutenRepository(context).fetchData(userId, password)
                                     
                                     if (result.isSuccess) {
                                         val usage = result.getOrNull() ?: 0.0
