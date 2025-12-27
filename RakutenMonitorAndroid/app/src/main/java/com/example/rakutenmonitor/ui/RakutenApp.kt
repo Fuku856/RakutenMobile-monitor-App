@@ -221,6 +221,7 @@ fun DashboardScreen(onLogout: () -> Unit) {
     // Refresh State
     val scope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf("") }
 
     // Determine circular chart limit and next milestone
     val (chartLimit, nextMilestoneText) = when {
@@ -351,11 +352,19 @@ fun DashboardScreen(onLogout: () -> Unit) {
                 ),
                 actions = {
                     if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.padding(16.dp).size(24.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            strokeWidth = 2.dp
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                             Text(
+                                text = statusMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(end = 8.dp)
+                            )
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(16.dp).size(24.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 2.dp
+                            )
+                        }
                     } else {
                         IconButton(onClick = {
                             val userId = SecureStorage(context).getUserId()
@@ -363,12 +372,15 @@ fun DashboardScreen(onLogout: () -> Unit) {
 
                             if (userId != null && password != null) {
                                 isLoading = true
+                                statusMessage = "Starting..."
                                 scope.launch {
                                     // WebView must run on Main thread initially to be created, and our fetchData handles dispatchers.
                                     // However, since we are in a coroutine scope on Main thread (from rememberCoroutineScope), 
                                     // we can just call it. But fetchData is suspend.
                                     
-                                    val result = RakutenRepository(context).fetchData(userId, password)
+                                    val result = RakutenRepository(context).fetchData(userId, password) { msg ->
+                                        statusMessage = msg
+                                    }
                                     
                                     if (result.isSuccess) {
                                         val usage = result.getOrNull() ?: 0.0
@@ -386,6 +398,7 @@ fun DashboardScreen(onLogout: () -> Unit) {
                                         Toast.makeText(context, "更新失敗: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                                     }
                                     isLoading = false
+                                    statusMessage = ""
                                 }
                             } else {
                                 Toast.makeText(context, "ログイン情報が見つかりません", Toast.LENGTH_SHORT).show()
