@@ -40,55 +40,65 @@ class RakutenRepository(private val context: Context) {
                                       
                     if (isLoginPage && !loginScriptExecuted) {
                         loginScriptExecuted = true
-                        onProgress("Logging in...")
-                        Log.d(TAG, "Injecting login script...")
+                        val pageTitle = view?.title ?: "Unknown"
+                        onProgress("Login: ${pageTitle.take(10)}..")
+                        Log.d(TAG, "Injecting generic login script...")
                         
                         val js = """
                             (function() {
                                 var attempts = 0;
                                 var interval = setInterval(function() {
                                     attempts++;
-                                    if (attempts > 40) { // 20 seconds timeout
+                                    if (attempts > 40) { // 20 seconds
                                         clearInterval(interval);
                                         return;
                                     }
 
-                                    // Try various selectors for User/Pass
-                                    var u = document.getElementById('loginInner_u') || 
-                                            document.querySelector('input[name="u"]') || 
-                                            document.querySelector('input[type="text"][name*="user"]') ||
-                                            document.querySelector('input[type="email"]');
-                                            
-                                    var p = document.getElementById('loginInner_p') || 
-                                            document.querySelector('input[name="p"]') || 
-                                            document.querySelector('input[type="password"]');
+                                    // GENERIC HEURISTIC: Find Password Field First
+                                    var p = document.querySelector('input[type="password"]');
+                                    var u = null;
+
+                                    if (p) {
+                                        // Look for username field (text/email/tel) that is NOT hidden
+                                        var inputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"])'));
+                                        var pIndex = inputs.indexOf(p);
+                                        if (pIndex > 0) {
+                                            u = inputs[pIndex - 1]; // Assume the field before password is username
+                                        }
+                                    }
                                     
+                                    // Fallback to specific names if generic fails
+                                    if (!u) u = document.querySelector('input[name="u"], input[name="username"], input[name="login_id"]');
+
                                     if (u && p) {
                                         clearInterval(interval);
                                         
                                         u.value = '$userId';
                                         p.value = '$pass';
                                         
-                                        // Fire events to ensure frameworks (React/Vue) pick up the change
                                         u.dispatchEvent(new Event('input', { bubbles: true }));
                                         u.dispatchEvent(new Event('change', { bubbles: true }));
                                         p.dispatchEvent(new Event('input', { bubbles: true }));
                                         p.dispatchEvent(new Event('change', { bubbles: true }));
                                         
-                                        // Submit
+                                        // Generic Submit Finder
                                         setTimeout(function() {
-                                            var btn = document.querySelector('input[type="submit"]') || 
-                                                      document.querySelector('button[type="submit"]') ||
-                                                      document.querySelector('.loginButton'); // Generic class guesstimate
-                                                      
+                                            // 1. Try form submit button
+                                            var btn = p.form ? p.form.querySelector('button, input[type="submit"]') : null;
+                                            
+                                            // 2. Try generic selectors
+                                            if (!btn) btn = document.querySelector('button[type="submit"], input[type="submit"], .loginButton, button[class*="submit"], button[class*="login"]');
+                                            
                                             if (btn) {
                                                 btn.click();
+                                            } else if (p.form) {
+                                                p.form.submit();
                                             } else if (document.forms.length > 0) {
                                                 document.forms[0].submit();
                                             }
                                         }, 1000); 
                                     }
-                                }, 500); // Check every 500ms
+                                }, 500);
                             })();
                         """.trimIndent()
                         view?.evaluateJavascript(js, null)
