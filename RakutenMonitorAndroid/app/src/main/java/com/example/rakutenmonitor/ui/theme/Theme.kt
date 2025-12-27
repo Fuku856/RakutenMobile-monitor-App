@@ -21,9 +21,12 @@ private val DarkColorScheme = darkColorScheme(
     onPrimary = Color.White,
     primaryContainer = RakutenCrimsonDark,
     onPrimaryContainer = RakutenCrimsonLight,
-    secondary = PurpleGrey80,
-    tertiary = Pink80,
-    background = DarkBackground
+    secondary = RakutenCrimson,
+    onSecondary = Color.White,
+    background = DarkBackground,
+    surface = SurfaceDark,
+    onSurface = TextPrimaryDark,
+    error = ErrorRed
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -31,25 +34,19 @@ private val LightColorScheme = lightColorScheme(
     onPrimary = Color.White,
     primaryContainer = RakutenCrimsonLight,
     onPrimaryContainer = RakutenCrimsonDark,
-    secondary = PurpleGrey40,
-    tertiary = Pink40,
-    background = LightBackground
-
-    /* Other default colors to override
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
+    secondary = RakutenCrimson, // Use brand color for secondary too for consistency
     onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    background = LightBackground,
+    surface = SurfaceLight,
+    onSurface = TextPrimaryLight,
+    error = ErrorRed
 )
 
 @Composable
 fun RakutenMonitorTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // Disable dynamic color to enforce stylish brand theme
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -64,7 +61,7 @@ fun RakutenMonitorTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
+            window.statusBarColor = colorScheme.background.toArgb() // Make status bar blend with background
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }

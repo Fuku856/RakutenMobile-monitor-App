@@ -15,18 +15,87 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.compose.ui.draw.shadow
 import com.example.rakutenmonitor.R
 import com.example.rakutenmonitor.data.AppPreferences
+import com.example.rakutenmonitor.data.RakutenRepository
 import com.example.rakutenmonitor.data.SecureStorage
 import com.example.rakutenmonitor.ui.components.CircularChart
 import com.example.rakutenmonitor.worker.UpdateWorker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import com.example.rakutenmonitor.ui.theme.DarkGradientEnd
+import com.example.rakutenmonitor.ui.theme.DarkGradientStart
+import com.example.rakutenmonitor.ui.theme.GlassBorderDark
+import com.example.rakutenmonitor.ui.theme.GlassBorderLight
+import com.example.rakutenmonitor.ui.theme.GlassSurfaceDark
+import com.example.rakutenmonitor.ui.theme.GlassSurfaceLight
+import com.example.rakutenmonitor.ui.theme.GradientEnd
+import com.example.rakutenmonitor.ui.theme.GradientStart
+
+@Composable
+fun GlassBackground(content: @Composable () -> Unit) {
+    val isDark = isSystemInDarkTheme()
+    val brush = if (isDark) {
+        Brush.verticalGradient(listOf(DarkGradientStart, DarkGradientEnd))
+    } else {
+        Brush.verticalGradient(listOf(GradientStart, GradientEnd))
+    }
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(brush)
+    ) {
+        content()
+    }
+}
+
+@Composable
+fun GlassCard(
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(24.dp),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val isDark = isSystemInDarkTheme()
+    val backgroundColor = if (isDark) GlassSurfaceDark else GlassSurfaceLight
+    val borderColor = if (isDark) GlassBorderLight else GlassBorderLight // Always light border looks good for glass
+    
+    Surface(
+        modifier = modifier
+            .border(
+                BorderStroke(1.dp, borderColor),
+                shape
+            )
+            .shadow(
+                elevation = 8.dp,
+                shape = shape,
+                spotColor = Color.Black.copy(alpha = 0.1f)
+            ),
+        color = backgroundColor,
+        shape = shape,
+        content = content
+    )
+}
 
 @Composable
 fun RakutenApp() {
@@ -34,20 +103,22 @@ fun RakutenApp() {
     val secureStorage = remember { SecureStorage(context) }
     var isLoggedIn by remember { mutableStateOf(secureStorage.getUserId() != null) }
 
-    if (isLoggedIn) {
-        DashboardScreen(
-            onLogout = {
-                secureStorage.clear()
-                isLoggedIn = false
-            }
-        )
-    } else {
-        LoginScreen(
-            onLoginSuccess = { userId, password ->
-                secureStorage.saveCredentials(userId, password)
-                isLoggedIn = true
-            }
-        )
+    GlassBackground {
+        if (isLoggedIn) {
+            DashboardScreen(
+                onLogout = {
+                    secureStorage.clear()
+                    isLoggedIn = false
+                }
+            )
+        } else {
+            LoginScreen(
+                onLoginSuccess = { userId, password ->
+                    secureStorage.saveCredentials(userId, password)
+                    isLoggedIn = true
+                }
+            )
+        }
     }
 }
 
@@ -58,12 +129,13 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
     var password by remember { mutableStateOf("") }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("Rakuten Monitor", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -76,13 +148,11 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Card(
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                shape = RoundedCornerShape(16.dp),
+            GlassCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier.padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
@@ -99,7 +169,11 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
                         label = { Text(stringResource(R.string.user_id)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent
+                        )
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -110,7 +184,11 @@ fun LoginScreen(onLoginSuccess: (String, String) -> Unit) {
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent
+                        )
                     )
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -137,12 +215,17 @@ fun DashboardScreen(onLogout: () -> Unit) {
     
     // Theme Settings State
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var showLogoutConfirmation by remember { mutableStateOf(false) }
     val currentThemeMode by appPreferences.themeModeFlow.collectAsState()
+    
+    // Refresh State
+    val scope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(false) }
 
     // Determine circular chart limit and next milestone
     val (chartLimit, nextMilestoneText) = when {
-        usage < 3.0f -> 3.0f to "3GBまで あと${String.format("%.1f", 3.0f - usage)}GB"
-        usage < 20.0f -> 20.0f to "20GBまで あと${String.format("%.1f", 20.0f - usage)}GB"
+        usage < 3.0f -> 3.0f to "3GB まで あと${String.format("%.1f", 3.0f - usage)} GB"
+        usage < 20.0f -> 20.0f to "20GB まで あと${String.format("%.1f", 20.0f - usage)} GB"
         else -> 50.0f to "無制限エリア (20GB超過)"
     }
 
@@ -163,14 +246,25 @@ fun DashboardScreen(onLogout: () -> Unit) {
         )
     }
 
+    // Settings Dialog
     if (showSettingsDialog) {
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
-            title = { Text("設定") },
+            title = {
+                Text(
+                    text = "設定",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
                 Column {
-                    Text("テーマ設定", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "テーマ設定",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
                     
                     ThemeOption(
                         text = "システム設定に従う",
@@ -187,35 +281,119 @@ fun DashboardScreen(onLogout: () -> Unit) {
                         selected = currentThemeMode == AppPreferences.ThemeMode.DARK,
                         onClick = { appPreferences.saveThemeMode(AppPreferences.ThemeMode.DARK) }
                     )
+                    
+                    Divider(modifier = Modifier.padding(vertical = 16.dp))
+                    
+                    // Logout Option in Settings
+                    Button(
+                        onClick = {
+                            showSettingsDialog = false
+                            showLogoutConfirmation = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("ログアウト", fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showSettingsDialog = false }) {
                     Text("閉じる")
                 }
-            }
+            },
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha=0.95f), // Slightly transparent dialog
+            shape = RoundedCornerShape(28.dp)
+        )
+    }
+    
+    // Logout Confirmation Dialog
+    if (showLogoutConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirmation = false },
+            title = { Text("ログアウト") },
+            text = { Text("本当にログアウトしますか？") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutConfirmation = false
+                        onLogout()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("ログアウト")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirmation = false }) {
+                    Text("キャンセル")
+                }
+            },
+             containerColor = MaterialTheme.colorScheme.surface.copy(alpha=0.95f)
         )
     }
 
     Scaffold(
+        containerColor = Color.Transparent, // Transparent for gradient
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Dashboard", fontWeight = FontWeight.Bold) },
+                title = { 
+                    Text(
+                        "Rakuten Monitor",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = Color.Transparent, // Glass header
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 actions = {
-                    IconButton(onClick = {
-                        val workRequest = OneTimeWorkRequestBuilder<UpdateWorker>()
-                            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                            .build()
-                        WorkManager.getInstance(context).enqueue(workRequest)
-                    }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(16.dp).size(24.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        IconButton(onClick = {
+                            val userId = SecureStorage(context).getUserId()
+                            val password = SecureStorage(context).getPassword()
+
+                            if (userId != null && password != null) {
+                                isLoading = true
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        RakutenRepository().fetchData(userId, password)
+                                    }
+                                    
+                                    if (result.isSuccess) {
+                                        val usage = result.getOrNull() ?: 0.0
+                                        val currentTime = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date())
+                                        
+                                        appPreferences.saveUsage(usage.toFloat())
+                                        appPreferences.saveLastUpdated(currentTime)
+                                        
+                                        val workRequest = OneTimeWorkRequestBuilder<UpdateWorker>().build()
+                                        WorkManager.getInstance(context).enqueue(workRequest)
+
+                                        Toast.makeText(context, "更新完了", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        result.exceptionOrNull()?.printStackTrace()
+                                        Toast.makeText(context, "更新失敗: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                    isLoading = false
+                                }
+                            } else {
+                                Toast.makeText(context, "ログイン情報が見つかりません", Toast.LENGTH_SHORT).show()
+                            }
+                        }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurface)
+                        }
                     }
                     IconButton(onClick = { showSettingsDialog = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             )
@@ -225,84 +403,74 @@ fun DashboardScreen(onLogout: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Main Data Usage Card
-            Card(
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            // Main Data Usage - GLASS CARD
+            GlassCard(
+                shape = RoundedCornerShape(32.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(32.dp).fillMaxWidth(),
+                    modifier = Modifier.padding(40.dp).fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = "今月のデータ使用量",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
                     
                     CircularChart(
                         usage = usage,
                         limit = chartLimit,
-                        radius = 100.dp,
-                        strokeWidth = 24.dp,
+                        radius = 120.dp,
+                        strokeWidth = 28.dp,
                         color = MaterialTheme.colorScheme.primary
                     )
                     
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
                     
                     Text(
                         text = nextMilestoneText,
-                        style = MaterialTheme.typography.bodyLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.secondary
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Info Card
-            Card(
+            // Info Card - GLASS CARD
+            GlassCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(24.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    modifier = Modifier.padding(20.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "最終更新",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = if (lastUpdated.isNotEmpty()) lastUpdated else "未更新",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
+                   Row(verticalAlignment = Alignment.CenterVertically) {
+                       Text(
+                           text = "最終更新",
+                           style = MaterialTheme.typography.labelMedium,
+                           color = MaterialTheme.colorScheme.onSurfaceVariant
+                       )
+                       Spacer(modifier = Modifier.width(8.dp))
+                       Text(
+                           text = if (lastUpdated.isNotEmpty()) lastUpdated else "未更新",
+                           style = MaterialTheme.typography.bodyLarge,
+                           fontWeight = FontWeight.Medium,
+                           color = MaterialTheme.colorScheme.onSurface
+                       )
+                   }
                 }
             }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            OutlinedButton(
-                onClick = onLogout,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("ログアウト")
-            }
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -313,14 +481,19 @@ fun ThemeOption(text: String, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            .padding(vertical = 12.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         RadioButton(
             selected = selected,
-            onClick = onClick
+            onClick = onClick,
+            colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
         )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text = text)
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
