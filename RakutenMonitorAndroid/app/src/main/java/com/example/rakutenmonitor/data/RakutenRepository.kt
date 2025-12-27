@@ -1,14 +1,14 @@
-package com.example.rakutenmonitor.data
-
 import android.util.Log
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
 import java.io.IOException
+import java.util.regex.Pattern
 
 class RakutenRepository {
     private val TAG = "RakutenRepo"
+    private val USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
@@ -19,13 +19,15 @@ class RakutenRepository {
         return try {
             Log.d(TAG, "Starting data fetch...")
             
-            // 1. Initial Access to get cookies/tokens and parse form
+            // 1. Initial Access
             val loginUrl = "https://grp03.id.rakuten.co.jp/rms/nid/login?service_id=rm001&client_id=rmn_app_web&redirect_uri=https%3A%2F%2Fportal.mobile.rakuten.co.jp%2Fdashboard&scope=memberinfo_read_safebulk%2Cmemberinfo_read_point%2Cmemberinfo_get_card_token%2C30days%40Access%2C90days%40Refresh&contact_info_required=false&rae_service_id=rm001"
             
-            val initialRequest = Request.Builder().url(loginUrl).build()
+            val initialRequest = Request.Builder()
+                .url(loginUrl)
+                .header("User-Agent", USER_AGENT)
+                .build()
             val initialResponse = client.newCall(initialRequest).execute()
             if (!initialResponse.isSuccessful) {
-                Log.e(TAG, "Initial access failed: ${initialResponse.code}")
                 return Result.failure(IOException("Initial access failed: ${initialResponse.code}"))
             }
             
@@ -34,7 +36,7 @@ class RakutenRepository {
 
             val doc = Jsoup.parse(initialHtml)
             
-            // 2. Prepare Form Body by extracting real inputs
+            // 2. Prepare Form
             val formBodyBuilder = FormBody.Builder()
             val inputs = doc.select("input")
             
@@ -55,7 +57,6 @@ class RakutenRepository {
                         passFieldFound = true
                     }
                     type == "text" || type == "email" || type == "tel" -> {
-                        // Assumption: First text-like field is username
                         if (!userFieldFound && !name.contains("search", ignoreCase = true)) {
                             formBodyBuilder.add(name, userId)
                             userFieldFound = true
@@ -63,74 +64,71 @@ class RakutenRepository {
                             formBodyBuilder.add(name, value)
                         }
                     }
-                    type == "submit" || type == "image" -> {
-                        // Include submit buttons
-                        formBodyBuilder.add(name, value)
-                    }
+                    type == "submit" || type == "image" -> formBodyBuilder.add(name, value)
                 }
             }
             
-            // Fallbacks if extraction failed (unlikely if page loaded correctly)
             if (!userFieldFound) formBodyBuilder.add("u", userId)
             if (!passFieldFound) formBodyBuilder.add("p", pass)
-
-            Log.d(TAG, "Submitting login form...")
 
             // 3. POST Login
             val loginRequest = Request.Builder()
                 .url(loginUrl)
+                .header("User-Agent", USER_AGENT)
                 .post(formBodyBuilder.build())
                 .build()
 
             val loginResponse = client.newCall(loginRequest).execute()
             if (!loginResponse.isSuccessful) {
-                 Log.e(TAG, "Login POST failed: ${loginResponse.code}")
                  return Result.failure(IOException("Login POST failed: ${loginResponse.code}"))
             }
             
-            // Consume body to ensure connection reuse / cookie processing
-            loginResponse.body?.string()
+            loginResponse.body?.string() // Consume
             loginResponse.close()
 
             // 4. Fetch Dashboard
             Log.d(TAG, "Fetching dashboard...")
             val dashboardUrl = "https://portal.mobile.rakuten.co.jp/dashboard"
-            val dashboardRequest = Request.Builder().url(dashboardUrl).build()
+            val dashboardRequest = Request.Builder()
+                .url(dashboardUrl)
+                .header("User-Agent", USER_AGENT)
+                .build()
             val dashboardResponse = client.newCall(dashboardRequest).execute()
             
             if (!dashboardResponse.isSuccessful) {
-                Log.e(TAG, "Dashboard access failed: ${dashboardResponse.code}")
                 return Result.failure(IOException("Dashboard access failed: ${dashboardResponse.code}"))
             }
             
             val html = dashboardResponse.body?.string() ?: ""
             dashboardResponse.close()
 
-            // 5. Parse Data
+            // 5. Parse Data (Jsoup + Regex Fallback)
             val dashboardDoc = Jsoup.parse(html)
             val usageElement = dashboardDoc.select("div.title__data").first()
             
+            var finalUsage: Double? = null
+
             if (usageElement != null) {
-                // "19.5 GB" -> 19.5
                 val text = usageElement.text().replace("GB", "", ignoreCase = true).replace(" ", "")
-                val usage = text.toDoubleOrNull()
-                
-                if (usage != null) {
-                    Log.d(TAG, "Success! Usage: $usage")
-                    Result.success(usage)
-                } else {
-                    Log.e(TAG, "Parse error: $text")
-                    Result.failure(IOException("Parse error: $text"))
+                finalUsage = text.toDoubleOrNull()
+            }
+            
+            // Fallback: Regex Search in HTML
+            if (finalUsage == null) {
+                Log.d(TAG, "Jsoup failed, trying regex...")
+                val pattern = Pattern.compile("([0-9]+\\.[0-9]+)\\s*GB")
+                val matcher = pattern.matcher(html)
+                if (matcher.find()) {
+                    val found = matcher.group(1)
+                    finalUsage = found?.toDoubleOrNull()
                 }
+            }
+
+            if (finalUsage != null) {
+                Result.success(finalUsage)
             } else {
-                Log.e(TAG, "Usage element not found. Title: ${dashboardDoc.title()}")
-                 // Check if we are still on login page
-                if (dashboardDoc.title().contains("Login", ignoreCase = true) || 
-                    dashboardDoc.select("input[type=password]").isNotEmpty()) {
-                    Result.failure(IOException("Login failed (still on login page)"))
-                } else {
-                    Result.failure(IOException("Usage element not found"))   
-                }
+                Log.e(TAG, "Parse error. Title: ${dashboardDoc.title()}")
+                Result.failure(IOException("Usage element not found"))
             }
 
         } catch (e: Exception) {
