@@ -6,14 +6,35 @@ import okhttp3.HttpUrl
 import java.util.ArrayList
 
 class SimpleCookieJar : CookieJar {
-    private val cookieStore = HashMap<String, List<Cookie>>()
+    private val cookieStore = mutableListOf<Cookie>()
 
+    @Synchronized
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-        cookieStore[url.host] = cookies
+        val it = cookieStore.iterator()
+        while (it.hasNext()) {
+            val current = it.next()
+            for (newCookie in cookies) {
+                if (current.name == newCookie.name && current.domain == newCookie.domain && current.path == newCookie.path) {
+                    it.remove()
+                    break
+                }
+            }
+        }
+        cookieStore.addAll(cookies)
     }
 
+    @Synchronized
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
-        val cookies = cookieStore[url.host]
-        return cookies ?: ArrayList()
+        val validCookies = mutableListOf<Cookie>()
+        val it = cookieStore.iterator()
+        while (it.hasNext()) {
+            val cookie = it.next()
+            if (cookie.expiresAt < System.currentTimeMillis()) {
+                it.remove()
+            } else if (cookie.matches(url)) {
+                validCookies.add(cookie)
+            }
+        }
+        return validCookies
     }
 }
