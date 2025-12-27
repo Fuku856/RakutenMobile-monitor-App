@@ -65,7 +65,7 @@ class RakutenWidget : GlanceAppWidget() {
                     text = "Rakuten Mobile",
                     style = TextStyle(
                         fontSize = 10.sp,
-                        color = ColorProvider(Color.Gray, Color.LightGray)
+                        color = ColorProvider(Color.Gray)
                     )
                 )
                 
@@ -87,7 +87,7 @@ class RakutenWidget : GlanceAppWidget() {
                         style = TextStyle(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,
-                            color = ColorProvider(Color.Black, Color.White)
+                            color = ColorProvider(Color.Black)
                         )
                     )
                 }
