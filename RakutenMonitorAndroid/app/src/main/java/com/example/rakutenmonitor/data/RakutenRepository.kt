@@ -34,36 +34,67 @@ class RakutenRepository(private val context: Context) {
                     super.onPageFinished(view, url)
                     Log.d(TAG, "Page loaded: $url")
 
-                    if (url?.contains("id.rakuten.co.jp/rms/nid/login") == true && !loginScriptExecuted) {
+                    // 1. Handle Login Page (Supports both old and new login domains)
+                    val isLoginPage = url?.contains("login.account.rakuten.com") == true || 
+                                      url?.contains("id.rakuten.co.jp") == true
+                                      
+                    if (isLoginPage && !loginScriptExecuted) {
                         loginScriptExecuted = true
                         onProgress("Logging in...")
                         Log.d(TAG, "Injecting login script...")
                         
                         val js = """
                             (function() {
-                                var u = document.querySelector('input[name="u"]') || document.querySelector('input[type="text"]');
-                                var p = document.querySelector('input[name="p"]') || document.querySelector('input[type="password"]');
-                                var buttons = document.querySelectorAll('input[type="submit"], button[type="submit"]');
-                                
-                                if (u && p) {
-                                    u.value = '$userId';
-                                    p.value = '$pass';
-                                    u.dispatchEvent(new Event('change'));
-                                    p.dispatchEvent(new Event('change'));
+                                var attempts = 0;
+                                var interval = setInterval(function() {
+                                    attempts++;
+                                    if (attempts > 40) { // 20 seconds timeout
+                                        clearInterval(interval);
+                                        return;
+                                    }
+
+                                    // Try various selectors for User/Pass
+                                    var u = document.getElementById('loginInner_u') || 
+                                            document.querySelector('input[name="u"]') || 
+                                            document.querySelector('input[type="text"][name*="user"]') ||
+                                            document.querySelector('input[type="email"]');
+                                            
+                                    var p = document.getElementById('loginInner_p') || 
+                                            document.querySelector('input[name="p"]') || 
+                                            document.querySelector('input[type="password"]');
                                     
-                                    setTimeout(function() {
-                                        if (buttons.length > 0) {
-                                            buttons[0].click();
-                                        } else {
-                                            document.forms[0].submit();
-                                        }
-                                    }, 500);
-                                }
+                                    if (u && p) {
+                                        clearInterval(interval);
+                                        
+                                        u.value = '$userId';
+                                        p.value = '$pass';
+                                        
+                                        // Fire events to ensure frameworks (React/Vue) pick up the change
+                                        u.dispatchEvent(new Event('input', { bubbles: true }));
+                                        u.dispatchEvent(new Event('change', { bubbles: true }));
+                                        p.dispatchEvent(new Event('input', { bubbles: true }));
+                                        p.dispatchEvent(new Event('change', { bubbles: true }));
+                                        
+                                        // Submit
+                                        setTimeout(function() {
+                                            var btn = document.querySelector('input[type="submit"]') || 
+                                                      document.querySelector('button[type="submit"]') ||
+                                                      document.querySelector('.loginButton'); // Generic class guesstimate
+                                                      
+                                            if (btn) {
+                                                btn.click();
+                                            } else if (document.forms.length > 0) {
+                                                document.forms[0].submit();
+                                            }
+                                        }, 1000); 
+                                    }
+                                }, 500); // Check every 500ms
                             })();
                         """.trimIndent()
                         view?.evaluateJavascript(js, null)
                     }
 
+                    // 2. Handle Dashboard Page
                     if (url?.contains("portal.mobile.rakuten.co.jp/dashboard") == true && !checkLoopStarted) {
                         checkLoopStarted = true
                         onProgress("Dashboard access...")
@@ -120,10 +151,10 @@ class RakutenRepository(private val context: Context) {
                 }
             }
 
-            Log.d(TAG, "Loading initial login URL...")
+            Log.d(TAG, "Loading initial URL...")
             onProgress("Connecting...")
-             val loginUrl = "https://grp03.id.rakuten.co.jp/rms/nid/login?service_id=rm001&client_id=rmn_app_web&redirect_uri=https%3A%2F%2Fportal.mobile.rakuten.co.jp%2Fdashboard&scope=memberinfo_read_safebulk%2Cmemberinfo_read_point%2Cmemberinfo_get_card_token%2C30days%40Access%2C90days%40Refresh&contact_info_required=false&rae_service_id=rm001"
-            webView.loadUrl(loginUrl)
+            // Load dashboard directly, let it redirect to login
+            webView.loadUrl("https://portal.mobile.rakuten.co.jp/dashboard")
         }
     }
 }

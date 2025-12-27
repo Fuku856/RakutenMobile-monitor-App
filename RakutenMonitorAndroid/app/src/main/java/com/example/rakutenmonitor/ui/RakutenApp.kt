@@ -351,60 +351,64 @@ fun DashboardScreen(onLogout: () -> Unit) {
                     titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 actions = {
-                    if (isLoading) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                             Text(
-                                text = statusMessage,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(end = 8.dp)
-                            )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        if (isLoading) {
                             CircularProgressIndicator(
-                                modifier = Modifier.padding(16.dp).size(24.dp),
+                                modifier = Modifier.size(24.dp),
                                 color = MaterialTheme.colorScheme.primary,
                                 strokeWidth = 2.dp
                             )
-                        }
-                    } else {
-                        IconButton(onClick = {
-                            val userId = SecureStorage(context).getUserId()
-                            val password = SecureStorage(context).getPassword()
+                        } else {
+                            IconButton(onClick = {
+                                val userId = SecureStorage(context).getUserId()
+                                val password = SecureStorage(context).getPassword()
 
-                            if (userId != null && password != null) {
-                                isLoading = true
-                                statusMessage = "Starting..."
-                                scope.launch {
-                                    // WebView must run on Main thread initially to be created, and our fetchData handles dispatchers.
-                                    // However, since we are in a coroutine scope on Main thread (from rememberCoroutineScope), 
-                                    // we can just call it. But fetchData is suspend.
-                                    
-                                    val result = RakutenRepository(context).fetchData(userId, password) { msg ->
-                                        statusMessage = msg
-                                    }
-                                    
-                                    if (result.isSuccess) {
-                                        val usage = result.getOrNull() ?: 0.0
-                                        val currentTime = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date())
+                                if (userId != null && password != null) {
+                                    isLoading = true
+                                    statusMessage = "Starting..."
+                                    scope.launch {
+                                        val result = RakutenRepository(context).fetchData(userId, password) { msg ->
+                                            statusMessage = msg
+                                        }
                                         
-                                        appPreferences.saveUsage(usage.toFloat())
-                                        appPreferences.saveLastUpdated(currentTime)
-                                        
-                                        val workRequest = OneTimeWorkRequestBuilder<UpdateWorker>().build()
-                                        WorkManager.getInstance(context).enqueue(workRequest)
+                                        if (result.isSuccess) {
+                                            val usage = result.getOrNull() ?: 0.0
+                                            val currentTime = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date())
+                                            
+                                            appPreferences.saveUsage(usage.toFloat())
+                                            appPreferences.saveLastUpdated(currentTime)
+                                            
+                                            val workRequest = OneTimeWorkRequestBuilder<UpdateWorker>().build()
+                                            WorkManager.getInstance(context).enqueue(workRequest)
 
-                                        Toast.makeText(context, "更新完了", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        result.exceptionOrNull()?.printStackTrace()
-                                        Toast.makeText(context, "更新失敗: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, "更新完了", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            result.exceptionOrNull()?.printStackTrace()
+                                            Toast.makeText(context, "更新失敗: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                        isLoading = false
+                                        statusMessage = ""
                                     }
-                                    isLoading = false
-                                    statusMessage = ""
+                                } else {
+                                    Toast.makeText(context, "ログイン情報が見つかりません", Toast.LENGTH_SHORT).show()
                                 }
-                            } else {
-                                Toast.makeText(context, "ログイン情報が見つかりません", Toast.LENGTH_SHORT).show()
+                            }) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurface)
                             }
-                        }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurface)
+                        }
+                        
+                        // Status Text below the button
+                        if (statusMessage.isNotEmpty()) {
+                            Text(
+                                text = statusMessage,
+                                style = MaterialTheme.typography.labelSmall, // Smaller font
+                                color = Color.Red,
+                                maxLines = 1,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
                         }
                     }
                     IconButton(onClick = { showSettingsDialog = true }) {
