@@ -30,8 +30,14 @@ class UpdateWorker(
         val result = repository.fetchData(userId, password)
 
         return if (result.isSuccess) {
-            val usage = result.getOrNull() ?: 0.0
+            val usage = result.getOrNull() ?: 0.0f
             
+            // Save to AppPreferences for Main App UI
+            val appPreferences = AppPreferences(context)
+            val currentTime = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date())
+            appPreferences.saveUsage(usage.toFloat())
+            appPreferences.saveLastUpdated(currentTime)
+
             // Update Widget State
             val glanceId = GlanceAppWidgetManager(context).getGlanceIds(RakutenWidget::class.java).firstOrNull()
             if (glanceId != null) {
