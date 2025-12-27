@@ -74,7 +74,7 @@ fun GlassBackground(content: @Composable () -> Unit) {
 fun GlassCard(
     modifier: Modifier = Modifier,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(24.dp),
-    content: @Composable ColumnScope.() -> Unit
+    content: @Composable () -> Unit
 ) {
     val isDark = isSystemInDarkTheme()
     val backgroundColor = if (isDark) GlassSurfaceDark else GlassSurfaceLight
