@@ -22,7 +22,13 @@ class SimpleCookieJar : CookieJar {
         while (iterator.hasNext()) {
             val cookie = iterator.next()
             if (cookie.expiresAt < System.currentTimeMillis()) {
+                iterator.remove()
+                continue
+            }
+            if (cookie.matches(url)) {
+                matchingCookies.add(cookie)
+            }
         }
-        return validCookies
+        return matchingCookies
     }
 }

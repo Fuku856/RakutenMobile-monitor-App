@@ -1,3 +1,5 @@
+package com.example.rakutenmonitor.data
+
 import android.util.Log
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
