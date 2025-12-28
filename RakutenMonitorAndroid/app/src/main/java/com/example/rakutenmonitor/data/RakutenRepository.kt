@@ -11,22 +11,24 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
-class RakutenRepository(private val context: Context) {
-    private val TAG = "RakutenRepo"
-
-    suspend fun fetchData(userId: String, pass: String, onProgress: (String) -> Unit = {}): Result<Double> = withContext(Dispatchers.Main) {
+    suspend fun fetchData(onProgress: (String) -> Unit = {}): Result<Double> = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { continuation ->
             onProgress("Initializing WebView...")
             val webView = WebView(context)
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true
+            
+            // Sync cookies just in case, though WebView does it automatically usually
+            val cookieManager = android.webkit.CookieManager.getInstance()
+            cookieManager.setAcceptCookie(true)
+            cookieManager.setAcceptThirdPartyCookies(webView, true)
+
+            // User Agent (generic modern mobile)
             webView.settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 
-            var loginScriptExecuted = false
             var checkLoopStarted = false
             var attempts = 0
             val maxAttempts = 30 
-
             val handler = Handler(Looper.getMainLooper())
 
             webView.webViewClient = object : WebViewClient() {
@@ -34,99 +36,18 @@ class RakutenRepository(private val context: Context) {
                     super.onPageFinished(view, url)
                     Log.d(TAG, "Page loaded: $url")
 
-                    // 1. Handle Login Page (Supports both old and new login domains)
-                    // 1. Handle Login Page (Supports both old and new login domains)
+                    // 1. Check for Login Redirect
                     val isLoginPage = url?.contains("login.account.rakuten.com") == true || 
-                                      url?.contains("id.rakuten.co.jp") == true
-                                      
+                                      url?.contains("id.rakuten.co.jp") == true ||
+                                      url?.contains("member/login") == true // generic catch
+
                     if (isLoginPage) {
-                        val pageTitle = view?.title ?: "Unknown"
-                        onProgress("Login Step: ${pageTitle.take(10)}..")
-                        Log.d(TAG, "Injecting login/consent script...")
-                        
-                        val js = """
-                            (function() {
-                                var attempts = 0;
-                                
-                                function findSpecificButton() {
-                                    var btn = document.querySelector('input[type="submit"], button[type="submit"], .loginButton');
-                                    if (!btn) {
-                                        var buttons = Array.from(document.querySelectorAll('button, a.btn, input[type="button"]'));
-                                        btn = buttons.find(b => {
-                                            var t = (b.innerText || b.value || "").toLowerCase();
-                                            return t.includes('login') || t.includes('next') || t.includes('agree') || t.includes('allow') || 
-                                                   t.includes('ログイン') || t.includes('次へ') || t.includes('同意');
-                                        });
-                                    }
-                                    return btn;
-                                }
-
-                                var interval = setInterval(function() {
-                                    attempts++;
-                                    if (attempts > 40) { // 20 seconds timeout
-                                        clearInterval(interval);
-                                        return;
-                                    }
-
-                                    // 1. Find Password
-                                    var p = document.querySelector('input[type="password"]');
-                                    
-                                    // 2. Find Username
-                                    var u = null;
-                                    if (p) {
-                                        var inputs = Array.from(document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]):not([type="button"])'));
-                                        var pIndex = inputs.indexOf(p);
-                                        if (pIndex > 0) u = inputs[pIndex - 1];
-                                    }
-                                    if (!u) u = document.querySelector('input[name="u"], input[name="username"], input[name="login_id"], input[type="email"], input[type="tel"]');
-
-                                    // 3. Determine Action
-                                    var shouldSubmit = false;
-                                    var btn = findSpecificButton(); // Look for button every tick
-
-                                    if (u || p) {
-                                        // Case A/B/C: Inputs found (Login Page)
-                                        if (u) {
-                                            u.value = '$userId';
-                                            fireEvents(u);
-                                        }
-                                        if (p) {
-                                            p.value = '$pass';
-                                            fireEvents(p);
-                                        }
-                                        shouldSubmit = true;
-                                    } else if (btn) {
-                                        // Case D: No inputs, but BUTTON found (Consent Page)
-                                        // Only proceed if we actually see the button
-                                        shouldSubmit = true;
-                                    }
-                                    // If neither inputs nor button found, Continue Loop (wait for load)
-
-                                    if (shouldSubmit) {
-                                        clearInterval(interval); // Found our target
-                                        
-                                        setTimeout(function() {
-                                            // Re-find button to be safe
-                                            var finalBtn = findSpecificButton();
-                                            
-                                            if (finalBtn) {
-                                                console.log("Clicking button: " + (finalBtn.innerText || finalBtn.value));
-                                                finalBtn.click();
-                                            } else if (document.forms.length > 0) {
-                                                document.forms[0].submit();
-                                            }
-                                        }, 500);
-                                    }
-
-                                    function fireEvents(el) {
-                                        el.dispatchEvent(new Event('input', { bubbles: true }));
-                                        el.dispatchEvent(new Event('change', { bubbles: true }));
-                                        el.dispatchEvent(new Event('blur', { bubbles: true }));
-                                    }
-                                }, 500);
-                            })();
-                        """.trimIndent()
-                        view?.evaluateJavascript(js, null)
+                        Log.d(TAG, "Login page detected. Manual login required.")
+                        if (continuation.isActive) {
+                            continuation.resumeWithException(LoginRequiredException())
+                            webView.destroy()
+                        }
+                        return
                     }
 
                     // 2. Handle Dashboard Page
@@ -151,7 +72,7 @@ class RakutenRepository(private val context: Context) {
                                 val jsCheck = """
                                     (function() {
                                         var el = document.querySelector('div.title__data');
-                                        return el ? el.innerText : null;
+                                        return el ? el.innerText : null; // "3.2 GB" / "データ使用量" etc
                                     })();
                                 """.trimIndent()
 
@@ -159,6 +80,8 @@ class RakutenRepository(private val context: Context) {
                                     Log.d(TAG, "JS Check attempt $attempts: $value")
                                     
                                     if (value != null && value != "null" && value != "null") {
+                                        // Attempt to parse number
+                                        // Format might be "3.0GB" or "3.0"
                                         val cleanValue = value.replace("\"", "")
                                             .replace("GB", "", ignoreCase = true)
                                             .replace(" ", "")
@@ -173,10 +96,11 @@ class RakutenRepository(private val context: Context) {
                                                 webView.destroy()
                                             }
                                         } else {
-                                            handler.postDelayed(this, 2000)
+                                            // Ensure we don't loop forever if text is weird, but for now retry
+                                             handler.postDelayed(this, 1000)
                                         }
                                     } else {
-                                        handler.postDelayed(this, 2000)
+                                        handler.postDelayed(this, 1000)
                                     }
                                 }
                             }
@@ -186,10 +110,11 @@ class RakutenRepository(private val context: Context) {
                 }
             }
 
-            Log.d(TAG, "Loading initial URL...")
+            Log.d(TAG, "Loading dashboard URL...")
             onProgress("Connecting...")
-            // Load dashboard directly, let it redirect to login
             webView.loadUrl("https://portal.mobile.rakuten.co.jp/dashboard")
         }
     }
 }
+
+class LoginRequiredException : Exception("Login required")

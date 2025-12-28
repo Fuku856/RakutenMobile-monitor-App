@@ -335,6 +335,41 @@ fun DashboardScreen(onLogout: () -> Unit) {
         )
     }
 
+    // Login WebView Dialog
+    if (showLoginWebView) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showLoginWebView = false }) {
+             // Full screen dialog-ish
+             Surface(modifier = Modifier.fillMaxSize()) {
+                 Column {
+                     // Close Button
+                     IconButton(onClick = { showLoginWebView = false }, modifier = Modifier.align(Alignment.End)) {
+                         Icon(Icons.Default.Close, contentDescription = "Close")
+                     }
+                     LoginWebView(
+                         onLoginSuccess = {
+                             showLoginWebView = false
+                             isLoginRequired = false
+                             statusMessage = "Login Success. Refreshing..."
+                             // Trigger refresh
+                              scope.launch {
+                                    isLoading = true
+                                    val result = RakutenRepository(context).fetchData { msg -> statusMessage = msg }
+                                    if (result.isSuccess) {
+                                         val u = result.getOrNull() ?: 0.0
+                                         appPreferences.saveUsage(u.toFloat())
+                                         appPreferences.saveLastUpdated(SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date()))
+                                    }
+                                    isLoading = false
+                                    statusMessage = "" // Clear status after refresh
+                              }
+                         }, 
+                         onDismiss = { showLoginWebView = false }
+                     )
+                 }
+             }
+        }
+    }
+
     Scaffold(
         containerColor = Color.Transparent, // Transparent for gradient
         topBar = {
@@ -355,48 +390,72 @@ fun DashboardScreen(onLogout: () -> Unit) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isLoginRequired) {
+                                 Button(
+                                    onClick = { showLoginWebView = true },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(30.dp).padding(end = 4.dp)
+                                 ) {
+                                     Text("再ログイン", fontSize = 10.sp)
+                                 }
+                            }
                             IconButton(onClick = {
-                                val userId = SecureStorage(context).getUserId()
-                                val password = SecureStorage(context).getPassword()
-
-                                if (userId != null && password != null) {
-                                    isLoading = true
-                                    statusMessage = "Starting..."
-                                    scope.launch {
-                                        val result = RakutenRepository(context).fetchData(userId, password) { msg ->
+                                isLoading = true
+                                isLoginRequired = false // Reset login required state on manual refresh
+                                statusMessage = "Starting..."
+                                scope.launch {
+                                    try {
+                                        val result = RakutenRepository(context).fetchData { msg ->
                                             statusMessage = msg
                                         }
                                         
                                         if (result.isSuccess) {
-                                            val usage = result.getOrNull() ?: 0.0
+                                            val u = result.getOrNull() ?: 0.0
                                             val currentTime = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date())
                                             
-                                            appPreferences.saveUsage(usage.toFloat())
+                                            appPreferences.saveUsage(u.toFloat())
                                             appPreferences.saveLastUpdated(currentTime)
                                             
+                                            // Schedule Background Work
                                             val workRequest = OneTimeWorkRequestBuilder<UpdateWorker>().build()
                                             WorkManager.getInstance(context).enqueue(workRequest)
 
                                             Toast.makeText(context, "更新完了", Toast.LENGTH_SHORT).show()
                                         } else {
-                                            result.exceptionOrNull()?.printStackTrace()
-                                            Toast.makeText(context, "更新失敗: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                            // Handle Failure
+                                            val ex = result.exceptionOrNull()
+                                            if (ex is com.example.rakutenmonitor.data.LoginRequiredException) {
+                                                statusMessage = "要ログイン"
+                                                isLoginRequired = true
+                                                Toast.makeText(context, "再ログインが必要です", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(context, "更新失敗: ${ex?.message}", Toast.LENGTH_LONG).show()
+                                            }
                                         }
+                                    } catch(e: Exception) {
+                                         if (e is com.example.rakutenmonitor.data.LoginRequiredException) {
+                                            statusMessage = "要ログイン"
+                                            isLoginRequired = true
+                                         } else {
+                                            e.printStackTrace()
+                                            Toast.makeText(context, "エラー: ${e.message}", Toast.LENGTH_LONG).show()
+                                         }
+                                    } finally {
                                         isLoading = false
-                                        statusMessage = ""
+                                        if (!isLoginRequired && statusMessage == "Starting...") statusMessage = "" // Clear generic status if not login required
                                     }
-                                } else {
-                                    Toast.makeText(context, "ログイン情報が見つかりません", Toast.LENGTH_SHORT).show()
                                 }
                             }) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurface)
+                                if (isLoading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.onSurface)
+                                }
                             }
                         }
                         
@@ -405,7 +464,7 @@ fun DashboardScreen(onLogout: () -> Unit) {
                             Text(
                                 text = statusMessage,
                                 style = MaterialTheme.typography.labelSmall, // Smaller font
-                                color = Color.Red,
+                                color = if (isLoginRequired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
