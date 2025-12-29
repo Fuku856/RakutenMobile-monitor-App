@@ -222,6 +222,8 @@ fun DashboardScreen(onLogout: () -> Unit) {
     val scope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("") }
+    var isLoginRequired by remember { mutableStateOf(false) }
+    var showLoginWebView by remember { mutableStateOf(false) }
 
     // Determine circular chart limit and next milestone
     val (chartLimit, nextMilestoneText) = when {
@@ -574,4 +576,28 @@ fun ThemeOption(text: String, selected: Boolean, onClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurface
         )
     }
+}
+
+@Composable
+fun LoginWebView(onLoginSuccess: () -> Unit, onDismiss: () -> Unit) {
+    AndroidView(
+        factory = { ctx ->
+            android.webkit.WebView(ctx).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+                
+                webViewClient = object : android.webkit.WebViewClient() {
+                    override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        if (url?.contains("portal.mobile.rakuten.co.jp/dashboard") == true) {
+                            onLoginSuccess()
+                        }
+                    }
+                }
+                loadUrl("https://portal.mobile.rakuten.co.jp/dashboard")
+            }
+        },
+        modifier = Modifier.fillMaxSize()
+    )
 }
