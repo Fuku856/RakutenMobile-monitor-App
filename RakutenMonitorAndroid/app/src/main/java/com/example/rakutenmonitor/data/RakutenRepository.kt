@@ -11,6 +11,9 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
+class RakutenRepository(private val context: Context) {
+    private val TAG = "RakutenRepo"
+
     suspend fun fetchData(onProgress: (String) -> Unit = {}): Result<Double> = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { continuation ->
             onProgress("Initializing WebView...")
