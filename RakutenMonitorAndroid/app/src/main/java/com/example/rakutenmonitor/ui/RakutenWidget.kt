@@ -47,6 +47,8 @@ class RakutenWidget : GlanceAppWidget() {
 
     @Composable
     fun RakutenWidgetContent(usage: Float, lastUpdated: String) {
+        val context = androidx.glance.LocalContext.current
+        
         // Glassmorphism effect: Semi-transparent background
         // Note: Real blur is limited in AppWidgets, so we use transparency and white/black tint.
         Box(
@@ -65,7 +67,7 @@ class RakutenWidget : GlanceAppWidget() {
                     text = "Rakuten Mobile",
                     style = TextStyle(
                         fontSize = 10.sp,
-                        color = ColorProvider(Color.Gray)
+                        color = ColorProvider(Color.LightGray)
                     )
                 )
                 
@@ -87,24 +89,21 @@ class RakutenWidget : GlanceAppWidget() {
                         style = TextStyle(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,
-                            color = ColorProvider(Color.Black)
+                            color = ColorProvider(Color.White)
                         )
                     )
                 }
 
                 Spacer(modifier = GlanceModifier.height(8.dp))
 
-                // Linear Progress Bar
-                val limit = 20.0f
-                val progress = (usage / limit).coerceIn(0.0f, 1.0f)
+                // Pie Chart
+                val limit = 20.0f // Default limit, could be configurable
+                val bitmap = createPieChartBitmap(context, usage, limit)
                 
-                androidx.glance.appwidget.LinearProgressIndicator(
-                    progress = progress,
-                    modifier = GlanceModifier
-                        .fillMaxWidth()
-                        .height(6.dp),
-                    color = ColorProvider(R.color.rakuten_crimson),
-                    backgroundColor = ColorProvider(Color(0xFFE0E0E0))
+                androidx.glance.Image(
+                    provider = androidx.glance.ImageProvider(bitmap),
+                    contentDescription = "Data Usage Pie Chart",
+                    modifier = GlanceModifier.size(120.dp)
                 )
 
                 Spacer(modifier = GlanceModifier.height(4.dp))
@@ -114,10 +113,41 @@ class RakutenWidget : GlanceAppWidget() {
                     text = "Updated: $lastUpdated",
                     style = TextStyle(
                         fontSize = 10.sp,
-                        color = ColorProvider(Color.Gray)
+                        color = ColorProvider(Color.LightGray)
                     )
                 )
             }
         }
+    }
+
+    private fun createPieChartBitmap(context: Context, usage: Float, limit: Float): android.graphics.Bitmap {
+        val size = 300 // Bitmap size (px)
+        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+        val rect = android.graphics.RectF(0f, 0f, size.toFloat(), size.toFloat())
+
+        // Calculate angles
+        val usageRatio = (usage / limit).coerceIn(0.0f, 1.0f)
+        val sweepAngle = 360f * usageRatio
+        
+        // Draw background circle (Remaining)
+        paint.color = android.graphics.Color.DKGRAY
+        canvas.drawArc(rect, 0f, 360f, true, paint)
+
+        // Draw usage arc
+        paint.color = context.getColor(R.color.rakuten_crimson)
+        canvas.drawArc(rect, -90f, sweepAngle, true, paint) // Start from top
+
+        // Draw inner circle to make it a donut chart (Optional, but looks nice)
+        val innerRadiusRatio = 0.6f
+        val innerSize = size * innerRadiusRatio
+        val innerOffset = (size - innerSize) / 2
+        val innerRect = android.graphics.RectF(innerOffset, innerOffset, size.toFloat() - innerOffset, size.toFloat() - innerOffset)
+        
+        paint.color = android.graphics.Color.parseColor("#1E1E1E") // Match background roughly
+        canvas.drawOval(innerRect, paint)
+
+        return bitmap
     }
 }
